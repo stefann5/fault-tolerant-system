@@ -1,24 +1,27 @@
 ﻿using System;
 using System.ServiceModel;
 using System.ServiceModel.Description;
+using System.Linq;
 
 namespace FaultTolerantSystem.Server
 {
     public class ServerHost
     {
         private ServiceHost serviceHost;
+        private FaultTolerantService serviceInstance;
 
         public void Start()
         {
             try
             {
-                Console.WriteLine("========================================");
-                Console.WriteLine("   FAULT TOLERANT SYSTEM - SERVER");
-                Console.WriteLine("========================================");
+                Console.WriteLine("====================================================");
+                Console.WriteLine("         FAULT TOLERANT SYSTEM - SERVER");
+                Console.WriteLine("====================================================");
                 Console.WriteLine();
+                Console.WriteLine("Initializing WCF Service for Fault Tolerance...");
 
                 // Create service instance (singleton)
-                var serviceInstance = new FaultTolerantService();
+                serviceInstance = new FaultTolerantService();
 
                 // Create service host with the singleton instance
                 serviceHost = new ServiceHost(serviceInstance);
@@ -71,10 +74,28 @@ namespace FaultTolerantSystem.Server
                 // Open the service host
                 serviceHost.Open();
 
-                Console.WriteLine("[SERVER] Service is running at http://localhost:8080/FaultTolerantService");
-                Console.WriteLine("[SERVER] Press 'Q' to quit");
-                Console.WriteLine("[SERVER] Press 'L' to list all clients");
-                Console.WriteLine("[SERVER] Press 'S' to simulate failure");
+                Console.WriteLine("✓ WCF Service started successfully");
+                Console.WriteLine("✓ Database initialized and ready");
+                Console.WriteLine("✓ Heartbeat monitoring active (30s timeout)");
+                Console.WriteLine("✓ Failover mechanism enabled");
+                Console.WriteLine();
+                Console.WriteLine($"Service URL: http://localhost:8080/FaultTolerantService");
+                Console.WriteLine();
+                Console.WriteLine("====================================================");
+                Console.WriteLine("              SERVER STATUS: READY");
+                Console.WriteLine("====================================================");
+                Console.WriteLine();
+                Console.WriteLine("Monitoring Configuration:");
+                Console.WriteLine("  → Heartbeat Interval: 10 seconds");
+                Console.WriteLine("  → Client Timeout: 30 seconds");
+                Console.WriteLine("  → Expected Clients: 4 (2 working + 2 standby)");
+                Console.WriteLine();
+                Console.WriteLine("Commands:");
+                Console.WriteLine("  L - List all connected clients");
+                Console.WriteLine("  S - Simulate client failure");
+                Console.WriteLine("  Q - Quit server");
+                Console.WriteLine();
+                Console.WriteLine("Waiting for clients to connect...");
                 Console.WriteLine();
 
                 // Handle server commands
@@ -84,11 +105,12 @@ namespace FaultTolerantSystem.Server
 
                     if (key.Key == ConsoleKey.Q)
                     {
+                        Console.WriteLine("\n[SERVER] Shutdown requested...");
                         break;
                     }
                     else if (key.Key == ConsoleKey.L)
                     {
-                        ListClients();
+                        ShowClientStatus();
                     }
                     else if (key.Key == ConsoleKey.S)
                     {
@@ -105,40 +127,84 @@ namespace FaultTolerantSystem.Server
                 {
                     Console.WriteLine($"[SERVER ERROR] Inner exception: {ex.InnerException.Message}");
                 }
-                Console.WriteLine("Press any key to exit...");
+                Console.WriteLine("\nPossible causes:");
+                Console.WriteLine("  - Port 8080 is already in use");
+                Console.WriteLine("  - LocalDB is not available");
+                Console.WriteLine("  - Insufficient permissions");
+                Console.WriteLine("\nPress any key to exit...");
                 Console.ReadKey();
             }
         }
 
-        private void ListClients()
+        private void ShowClientStatus()
         {
             try
             {
-                var service = (FaultTolerantService)serviceHost.SingletonInstance;
-                var clients = service.GetAllClients();
+                var clients = serviceInstance.GetAllClients();
+                var workingClients = clients.Where(c => !c.IsStandby && c.Status == ClientStatus.Working).ToList();
+                var standbyClients = clients.Where(c => c.IsStandby && c.Status == ClientStatus.Standby).ToList();
+                var deadClients = clients.Where(c => c.Status == ClientStatus.Dead).ToList();
 
-                Console.WriteLine("\n========== CONNECTED CLIENTS ==========");
-                if (clients.Length == 0)
+                Console.WriteLine("\n" + new string('=', 50));
+                Console.WriteLine("               CLIENT STATUS REPORT");
+                Console.WriteLine(new string('=', 50));
+
+                Console.WriteLine($"\nTotal Connected Clients: {clients.Length}");
+                Console.WriteLine($"Working Clients: {workingClients.Count}");
+                Console.WriteLine($"Standby Clients: {standbyClients.Count}");
+                Console.WriteLine($"Dead Clients: {deadClients.Count}");
+
+                if (workingClients.Any())
                 {
-                    Console.WriteLine("No clients connected.");
-                }
-                else
-                {
-                    foreach (var client in clients)
+                    Console.WriteLine("\nWORKING CLIENTS:");
+                    foreach (var client in workingClients)
                     {
-                        Console.WriteLine($"ID: {client.ClientId}");
-                        Console.WriteLine($"  Status: {client.Status}");
-                        Console.WriteLine($"  Type: {(client.IsStandby ? "STANDBY" : "WORKING")}");
-                        Console.WriteLine($"  Last Heartbeat: {client.LastHeartbeat:HH:mm:ss}");
-                        Console.WriteLine($"  Registered: {client.RegisteredAt:HH:mm:ss}");
-                        Console.WriteLine();
+                        var lastHeartbeat = (DateTime.Now - client.LastHeartbeat).TotalSeconds;
+                        Console.WriteLine($"  {client.ClientId} - Last heartbeat: {lastHeartbeat:F0}s ago");
                     }
                 }
-                Console.WriteLine("=======================================\n");
+
+                if (standbyClients.Any())
+                {
+                    Console.WriteLine("\nSTANDBY CLIENTS:");
+                    foreach (var client in standbyClients)
+                    {
+                        var lastHeartbeat = (DateTime.Now - client.LastHeartbeat).TotalSeconds;
+                        Console.WriteLine($"  {client.ClientId} - Last heartbeat: {lastHeartbeat:F0}s ago");
+                    }
+                }
+
+                if (deadClients.Any())
+                {
+                    Console.WriteLine("\nDEAD CLIENTS:");
+                    foreach (var client in deadClients)
+                    {
+                        Console.WriteLine($"  {client.ClientId} - Detected dead");
+                    }
+                }
+
+                if (!clients.Any())
+                {
+                    Console.WriteLine("\nNo clients connected");
+                }
+
+                Console.WriteLine(new string('=', 50));
+
+                // System health check
+                if (workingClients.Count < 2 && standbyClients.Count == 0)
+                {
+                    Console.WriteLine("\nWARNING: System has insufficient redundancy!");
+                }
+                else if (workingClients.Count >= 1)
+                {
+                    Console.WriteLine("\nSystem is operating normally");
+                }
+
+                Console.WriteLine();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[SERVER ERROR] Failed to list clients: {ex.Message}");
+                Console.WriteLine($"\n[SERVER ERROR] Failed to retrieve client status: {ex.Message}");
             }
         }
 
@@ -146,31 +212,63 @@ namespace FaultTolerantSystem.Server
         {
             try
             {
-                var service = (FaultTolerantService)serviceHost.SingletonInstance;
-                var clients = service.GetAllClients();
+                var clients = serviceInstance.GetAllClients();
 
-                if (clients.Length == 0)
+                if (!clients.Any())
                 {
-                    Console.WriteLine("[SERVER] No clients connected to simulate failure.");
+                    Console.WriteLine("\n[SERVER] No clients connected to simulate failure.");
                     return;
                 }
 
-                Console.WriteLine("\nConnected clients:");
-                foreach (var client in clients)
+                var activeClients = clients.Where(c => c.Status != ClientStatus.Dead).ToList();
+
+                if (!activeClients.Any())
                 {
-                    Console.WriteLine($"  - {client.ClientId} ({client.Status})");
+                    Console.WriteLine("\n[SERVER] No active clients available for failure simulation.");
+                    return;
                 }
 
-                Console.Write("\nEnter client ID to simulate failure: ");
-                var clientId = Console.ReadLine();
+                Console.WriteLine("\n" + new string('-', 30));
+                Console.WriteLine("       FAILURE SIMULATION");
+                Console.WriteLine(new string('-', 30));
+                Console.WriteLine("\nActive clients:");
 
-                service.SimulateFailure(clientId);
+                for (int i = 0; i < activeClients.Count; i++)
+                {
+                    var client = activeClients[i];
+                    var type = client.IsStandby ? "STANDBY" : "WORKING";
+                    Console.WriteLine($"  {i + 1}. {client.ClientId} ({type})");
+                }
 
-                Console.WriteLine($"[SERVER] Simulated failure for client {clientId}");
+                Console.Write($"\nSelect client to fail (1-{activeClients.Count}): ");
+                var input = Console.ReadLine();
+
+                if (int.TryParse(input, out int selection) &&
+                    selection >= 1 && selection <= activeClients.Count)
+                {
+                    var selectedClient = activeClients[selection - 1];
+                    Console.WriteLine($"\n[SERVER] Simulating failure of {selectedClient.ClientId}...");
+
+                    serviceInstance.SimulateFailure(selectedClient.ClientId);
+
+                    Console.WriteLine($"[SERVER] ✓ {selectedClient.ClientId} marked as failed");
+
+                    if (!selectedClient.IsStandby)
+                    {
+                        Console.WriteLine("[SERVER] → Failover process initiated");
+                        Console.WriteLine("[SERVER] → Searching for standby client to activate...");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("\n[SERVER] Invalid selection.");
+                }
+
+                Console.WriteLine();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[SERVER ERROR] Failed to simulate failure: {ex.Message}");
+                Console.WriteLine($"\n[SERVER ERROR] Failed to simulate failure: {ex.Message}");
             }
         }
 
@@ -178,12 +276,12 @@ namespace FaultTolerantSystem.Server
         {
             try
             {
-                Console.WriteLine("[SERVER] Shutting down...");
+                Console.WriteLine("\n[SERVER] Shutting down service...");
                 if (serviceHost != null && serviceHost.State == CommunicationState.Opened)
                 {
                     serviceHost.Close();
                 }
-                Console.WriteLine("[SERVER] Service stopped");
+                Console.WriteLine("[SERVER] ✓ Service stopped successfully");
             }
             catch (Exception ex)
             {

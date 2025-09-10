@@ -1,7 +1,6 @@
 ﻿using System;
 using System.ServiceModel;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -19,20 +18,27 @@ namespace FaultTolerantSystem.Client
 
         public void StartWorking()
         {
-            Console.WriteLine($"[{client.ClientId}] Received START WORKING signal from server");
+            Console.WriteLine($"\n[SERVER SIGNAL] Start working command received!");
             client.StartWorking();
         }
 
         public void StopWorking()
         {
-            Console.WriteLine($"[{client.ClientId}] Received STOP WORKING signal from server");
+            Console.WriteLine($"\n[SERVER SIGNAL] Stop working command received!");
             client.StopWorking();
         }
 
         public void ReceiveMessage(byte[] encryptedData, string senderId)
         {
-            var decryptedMessage = client.cryptoManager.Decrypt(encryptedData);
-            Console.WriteLine($"[{client.ClientId}] Received encrypted message from {senderId}: {decryptedMessage}");
+            try
+            {
+                var decryptedMessage = client.cryptoManager.Decrypt(encryptedData);
+                Console.WriteLine($"\n[ENCRYPTED MESSAGE] From {senderId}: {decryptedMessage}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"\n[MESSAGE ERROR] Failed to decrypt message from {senderId}: {ex.Message}");
+            }
         }
     }
 
@@ -46,6 +52,9 @@ namespace FaultTolerantSystem.Client
         private Timer workTimer;
         private DuplexChannelFactory<IFaultTolerantService> channelFactory;
         public CryptoManager cryptoManager { get; private set; }
+        private DateTime startTime;
+        private int workOutputCount = 0;
+        private int heartbeatCount = 0;
 
         public ClientApplication(string clientId, bool isStandby)
         {
@@ -53,13 +62,14 @@ namespace FaultTolerantSystem.Client
             this.isStandby = isStandby;
             this.isWorking = false;
             this.cryptoManager = new CryptoManager();
+            this.startTime = DateTime.Now;
         }
 
         public void Start()
         {
             try
             {
-                Console.WriteLine($"[{ClientId}] Starting client application...");
+                ShowClientHeader();
 
                 // Create callback instance
                 var callback = new ClientCallback(this);
@@ -76,12 +86,13 @@ namespace FaultTolerantSystem.Client
                 serviceProxy = channelFactory.CreateChannel();
 
                 // Register with server
+                Console.WriteLine($"[{ClientId}] Connecting to server...");
                 var result = serviceProxy.RegisterClient(ClientId, isStandby);
-                Console.WriteLine($"[{ClientId}] {result}");
+                Console.WriteLine($"[{ClientId}] ✓ {result}");
 
                 // Start heartbeat timer
                 heartbeatTimer = new Timer(SendHeartbeat, null,
-                    TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(10));
+                    TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10));
 
                 // If not standby, start working immediately
                 if (!isStandby)
@@ -90,18 +101,20 @@ namespace FaultTolerantSystem.Client
                 }
                 else
                 {
-                    Console.WriteLine($"[{ClientId}] Running in STANDBY mode");
+                    Console.WriteLine($"[{ClientId}] Status: STANDBY MODE - Waiting for activation signal");
+                    Console.WriteLine($"[{ClientId}] Ready to take over if working client fails");
                 }
 
-                // Keep the client running
-                Console.WriteLine($"[{ClientId}] Press 'Q' to quit, 'S' to send message, 'F' to simulate failure");
+                ShowInstructions();
 
+                // Keep the client running and handle user input
                 while (true)
                 {
                     var key = Console.ReadKey(true);
 
                     if (key.Key == ConsoleKey.Q)
                     {
+                        Console.WriteLine($"\n[{ClientId}] Shutdown requested by user");
                         break;
                     }
                     else if (key.Key == ConsoleKey.S)
@@ -112,14 +125,70 @@ namespace FaultTolerantSystem.Client
                     {
                         SimulateFailure();
                     }
+                    else if (key.Key == ConsoleKey.I)
+                    {
+                        ShowClientInfo();
+                    }
                 }
 
                 Shutdown();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[{ClientId} ERROR] {ex.Message}");
+                Console.WriteLine($"\n[{ClientId} ERROR] {ex.Message}");
+                Console.WriteLine("\nPossible causes:");
+                Console.WriteLine("  - Server is not running");
+                Console.WriteLine("  - Network connection issues");
+                Console.WriteLine("  - Port 8080 is not accessible");
+                Console.WriteLine("\nPress any key to exit...");
+                Console.ReadKey();
             }
+        }
+
+        private void ShowClientHeader()
+        {
+            var modeText = isStandby ? "STANDBY CLIENT" : "WORKING CLIENT";
+            var modeIcon = isStandby ? "" : "";
+
+            Console.WriteLine("====================================================");
+            Console.WriteLine($"      {modeIcon} {modeText}: {ClientId}");
+            Console.WriteLine("====================================================");
+            Console.WriteLine();
+        }
+
+        private void ShowInstructions()
+        {
+            Console.WriteLine("\n" + new string('-', 50));
+            Console.WriteLine("                 CLIENT COMMANDS");
+            Console.WriteLine(new string('-', 50));
+            Console.WriteLine("  Q - Quit client");
+            Console.WriteLine("  F - Simulate failure (stop heartbeats)");
+            Console.WriteLine("  S - Send encrypted message to another client");
+            Console.WriteLine("  I - Show client information");
+            Console.WriteLine(new string('-', 50));
+            Console.WriteLine();
+        }
+
+        private void ShowClientInfo()
+        {
+            var uptime = DateTime.Now - startTime;
+            var status = isWorking ? "WORKING" : (isStandby ? "STANDBY" : "INACTIVE");
+            var statusIcon = isWorking ? "" : (isStandby ? "" : "");
+
+            Console.WriteLine($"\n" + new string('=', 40));
+            Console.WriteLine($"        CLIENT INFORMATION");
+            Console.WriteLine(new string('=', 40));
+            Console.WriteLine($"Client ID: {ClientId}");
+            Console.WriteLine($"Status: {statusIcon} {status}");
+            Console.WriteLine($"Uptime: {uptime:hh\\:mm\\:ss}");
+            Console.WriteLine($"Heartbeats sent: {heartbeatCount}");
+            if (isWorking)
+            {
+                Console.WriteLine($"Work outputs: {workOutputCount}");
+            }
+            Console.WriteLine($"Started: {startTime:HH:mm:ss}");
+            Console.WriteLine(new string('=', 40));
+            Console.WriteLine();
         }
 
         public void StartWorking()
@@ -128,11 +197,14 @@ namespace FaultTolerantSystem.Client
             {
                 isWorking = true;
                 isStandby = false;
-                Console.WriteLine($"[{ClientId}] Starting work...");
+                workOutputCount = 0;
 
-                // Start work timer
+                Console.WriteLine($"\n[{ClientId}] ACTIVATED - Now working!");
+                Console.WriteLine($"[{ClientId}] Will output 'WORKING...' every 5 seconds");
+
+                // Start work timer - output every 5 seconds as per specification
                 workTimer = new Timer(DoWork, null,
-                    TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(5));
+                    TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5));
             }
         }
 
@@ -141,11 +213,12 @@ namespace FaultTolerantSystem.Client
             if (isWorking)
             {
                 isWorking = false;
-                Console.WriteLine($"[{ClientId}] Stopping work...");
+                Console.WriteLine($"\n[{ClientId}] DEACTIVATED - Stopped working");
 
                 // Stop work timer
                 workTimer?.Change(Timeout.Infinite, 0);
                 workTimer?.Dispose();
+                workTimer = null;
             }
         }
 
@@ -153,7 +226,10 @@ namespace FaultTolerantSystem.Client
         {
             if (isWorking)
             {
+                workOutputCount++;
                 var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+
+                // Output format as specified: "WORKING... <timestamp>"
                 Console.WriteLine($"[{ClientId}] WORKING... {timestamp}");
             }
         }
@@ -163,11 +239,14 @@ namespace FaultTolerantSystem.Client
             try
             {
                 serviceProxy.SendHeartbeat(ClientId);
-                Console.WriteLine($"[{ClientId}] Heartbeat sent");
+                heartbeatCount++;
+
+                var now = DateTime.Now.ToString("HH:mm:ss");
+                Console.WriteLine($"[{ClientId}] Heartbeat #{heartbeatCount} sent at {now}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[{ClientId} ERROR] Failed to send heartbeat: {ex.Message}");
+                Console.WriteLine($"[{ClientId}] Failed to send heartbeat: {ex.Message}");
             }
         }
 
@@ -175,26 +254,51 @@ namespace FaultTolerantSystem.Client
         {
             try
             {
-                Console.Write("Enter receiver client ID: ");
-                var receiverId = Console.ReadLine();
+                Console.WriteLine($"\n" + new string('-', 30));
+                Console.WriteLine("    ENCRYPTED MESSAGE");
+                Console.WriteLine(new string('-', 30));
+
+                Console.Write("Enter receiver client ID (e.g., CLIENT2): ");
+                var receiverId = Console.ReadLine()?.Trim();
+
+                if (string.IsNullOrEmpty(receiverId))
+                {
+                    Console.WriteLine("Invalid receiver ID");
+                    return;
+                }
 
                 Console.Write("Enter message: ");
-                var message = Console.ReadLine();
+                var message = Console.ReadLine()?.Trim();
 
+                if (string.IsNullOrEmpty(message))
+                {
+                    Console.WriteLine("Message cannot be empty");
+                    return;
+                }
+
+                Console.WriteLine("Encrypting message...");
                 var encryptedData = cryptoManager.Encrypt(message);
+
+                Console.WriteLine("Sending encrypted message to server...");
                 serviceProxy.GetEncryptedMessage(ClientId, receiverId, encryptedData);
 
-                Console.WriteLine($"[{ClientId}] Encrypted message sent to {receiverId}");
+                Console.WriteLine($"Encrypted message sent successfully to {receiverId}");
+                Console.WriteLine(new string('-', 30));
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[{ClientId} ERROR] Failed to send message: {ex.Message}");
+                Console.WriteLine($"[{ClientId}] Failed to send message: {ex.Message}");
             }
         }
 
         private void SimulateFailure()
         {
-            Console.WriteLine($"[{ClientId}] Simulating failure - stopping heartbeats...");
+            Console.WriteLine($"\n[{ClientId}] SIMULATING FAILURE");
+            Console.WriteLine($"[{ClientId}] Stopping heartbeats to simulate network/system failure...");
+            Console.WriteLine($"[{ClientId}] Server will detect failure in ~30 seconds");
+            Console.WriteLine($"[{ClientId}] If this is a working client, standby will be activated");
+
+            // Stop heartbeat timer to simulate failure
             heartbeatTimer?.Change(Timeout.Infinite, 0);
         }
 
@@ -202,7 +306,7 @@ namespace FaultTolerantSystem.Client
         {
             try
             {
-                Console.WriteLine($"[{ClientId}] Shutting down...");
+                Console.WriteLine($"\n[{ClientId}] Shutting down client...");
 
                 // Stop timers
                 heartbeatTimer?.Change(Timeout.Infinite, 0);
@@ -214,20 +318,30 @@ namespace FaultTolerantSystem.Client
                 // Unregister from server
                 if (serviceProxy != null)
                 {
-                    serviceProxy.UnregisterClient(ClientId);
+                    try
+                    {
+                        serviceProxy.UnregisterClient(ClientId);
+                        Console.WriteLine($"[{ClientId}] Unregistered from server");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[{ClientId}] Warning: Could not unregister cleanly: {ex.Message}");
+                    }
                 }
 
                 // Close channel
                 channelFactory?.Close();
+                Console.WriteLine($"[{ClientId}] Connection closed");
+                Console.WriteLine($"[{ClientId}] Goodbye!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[{ClientId} ERROR] Error during shutdown: {ex.Message}");
+                Console.WriteLine($"[{ClientId}] Error during shutdown: {ex.Message}");
             }
         }
     }
 
-    // Cryptography Manager for secure communication
+    // Cryptography Manager for secure communication between clients
     public class CryptoManager
     {
         private readonly byte[] key;
@@ -235,10 +349,8 @@ namespace FaultTolerantSystem.Client
 
         public CryptoManager()
         {
-            // In production, use a secure key exchange mechanism
-            // For demo purposes, using a fixed key
-            key = Encoding.UTF8.GetBytes("ThisIsASecretKey1234567890123456");
-            iv = Encoding.UTF8.GetBytes("ThisIsAnIV123456");
+            key = Encoding.UTF8.GetBytes("FaultTolerantSystemSecretKey1234"); // 32 bytes for AES-256
+            iv = Encoding.UTF8.GetBytes("InitializationV!"); // 16 bytes for AES IV
         }
 
         public byte[] Encrypt(string plainText)
@@ -247,6 +359,8 @@ namespace FaultTolerantSystem.Client
             {
                 aes.Key = key;
                 aes.IV = iv;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
 
                 using (var encryptor = aes.CreateEncryptor())
                 {
@@ -262,6 +376,8 @@ namespace FaultTolerantSystem.Client
             {
                 aes.Key = key;
                 aes.IV = iv;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
 
                 using (var decryptor = aes.CreateDecryptor())
                 {

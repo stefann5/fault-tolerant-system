@@ -63,7 +63,6 @@ namespace FaultTolerantSystem
 
     public enum ClientStatus
     {
-        Active,
         Standby,
         Dead,
         Working
