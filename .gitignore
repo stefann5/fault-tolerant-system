@@ -1,0 +1,66 @@
+# Visual Studio files
+.vs/
+*.suo
+*.user
+*.userprefs
+*.log
+*.bak
+*.cache
+*.obj
+*.pdb
+*.suo
+*.suo.bak
+*.suo.user
+
+# Build artifacts
+[Dd]ebug/
+[Rr]elease/
+bin/
+obj/
+*.exe
+*.dll
+*.ilk
+*.idb
+*.pdb
+*.tlb
+*.tlh
+*.tmp
+*.o
+*.lo
+*.la
+*.so
+*.a
+*.lib
+*.ncb
+*.sbr
+*.res
+*.pch
+*.exp
+*.map
+*.ipch
+*.aps
+*.bsc
+*.mdf
+*.ldf
+*.sdf
+*.vshost.*
+
+# NuGet packages
+packages/
+*.nupkg
+*.snupkg
+
+# Rider files
+.idea/
+
+# Editor-specific files
+.vscode/
+*.swp
+*~
+# Logs
+logs/
+*.log
+
+# Other common exclusions
+Thumbs.db
+Desktop.ini
