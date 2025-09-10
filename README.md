@@ -3,10 +3,8 @@
 ## Table of Contents
 1. [Project Overview](#1-project-overview)
 2. [System Architecture](#2-system-architecture)
-3. [Installation & Setup](#3-installation--setup)
-4. [User Guide](#4-user-guide)
-5. [Configuration](#5-configuration)
-6. [Troubleshooting](#6-troubleshooting)
+3. [User Guide](#3-user-guide)
+4. [Quick Reference](#4-quick-reference)
 
 ---
 
@@ -66,9 +64,9 @@ The Fault Tolerant System demonstrates enterprise-level fault tolerance using WC
 4. **Recovery**: New working client begins operation within 1 second
 
 
-## 5. User Guide
+## 3. User Guide
 
-### 5.1 Starting the System
+### 3.1 Starting the System
 
 #### Automatic Launch 
 ```bash
@@ -81,7 +79,7 @@ This automatically starts:
 - 2 Working Clients (CLIENT1, CLIENT2)
 - 2 Standby Clients (CLIENT3, CLIENT4)
 
-### 5.2 Server Operations
+### 3.2 Server Operations
 
 **Server Interface:**
 ```
@@ -104,7 +102,7 @@ Commands:
 - **S**: Select a client to simulate failure for testing
 - **Q**: Graceful server shutdown
 
-### 5.3 Client Operations
+### 3.3 Client Operations
 
 **Working Client Display:**
 ```
@@ -120,7 +118,7 @@ Commands:
 - **S**: Send encrypted message to another client
 - **I**: Show client information and statistics
 
-### 5.4 Testing Failover
+### 3.4 Testing Failover
 
 1. **Start the system** normally
 2. **Press 'F'** in a working client window (CLIENT1 or CLIENT2)
@@ -128,7 +126,7 @@ Commands:
 4. **Observe** standby client automatically activates and begins working
 5. **Verify** in server window that failover completed successfully
 
-### 5.5 Testing Encrypted Messaging
+### 3.5 Testing Encrypted Messaging
 
 1. **Press 'S'** in any client window
 2. **Enter target client ID** (e.g., CLIENT2)
@@ -136,7 +134,7 @@ Commands:
 4. **Observe** encrypted message appears in target client window
 
 
-## Quick Reference
+## 4. Quick Reference
 
 ### File Locations
 - **Executable**: `bin\Debug\FaultTolerantSystem.exe`
